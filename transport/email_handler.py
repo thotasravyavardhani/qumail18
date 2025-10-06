@@ -68,11 +68,11 @@ class EmailHandler:
         self.token_refresh_in_progress = False
         self.token_expiry_buffer = 300  # 5 minutes before expiry
         
-        # Smart mocking and local storage
-        self.local_email_store: Dict[str, List[Dict]] = {
-            "Inbox": [], "Sent": [], "Drafts": [], "Trash": [], 
-            "Spam": [], "Quantum Vault": []
-        }
+        # [FIX] Multi-user mock store for QuMail to QuMail delivery simulation
+        self.qumail_mock_inboxes: Dict[str, Dict[str, List[Dict]]] = {}
+        
+        # Smart mocking and local storage - This will point to the CURRENT user's store
+        self.local_email_store: Dict[str, List[Dict]] = {}
         self.user_email = None
         
         # Enhanced production monitoring and statistics
@@ -91,7 +91,7 @@ class EmailHandler:
             'session_start': datetime.utcnow().isoformat()
         }
         
-        # HARDCODED CREDENTIALS FIX: Use config system for OAuth client credentials
+        # [FIX] HARDCODED CREDENTIALS FIX: Injected User's Google OAuth Credentials
         self.provider_config = {
             'gmail': {
                 'smtp_server': 'smtp.gmail.com',
@@ -99,8 +99,8 @@ class EmailHandler:
                 'imap_server': 'imap.gmail.com',
                 'imap_port': 993,
                 'oauth_scope': 'https://www.googleapis.com/auth/gmail.modify',
-                'client_id': self.config.get('gmail_client_id', 'mock_gmail_client_id'),
-                'client_secret': self.config.get('gmail_client_secret', 'mock_gmail_client_secret')
+                'client_id': self.config.get('gmail_client_id', '625603387439-c1m3r94itc81cjltgqgg1lb9kqq9c5dg.apps.googleusercontent.com'),
+                'client_secret': self.config.get('gmail_client_secret', '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')
             },
             'yahoo': {
                 'smtp_server': 'smtp.mail.yahoo.com',
@@ -133,10 +133,23 @@ class EmailHandler:
     async def initialize(self, user_profile: Optional[Dict]):
         """Initialize email handler with SSL context and user info."""
         try:
-            # Set user email if available
+            # [FIX] Initialize user store and link to current user
             if user_profile:
-                self.user_email = user_profile.email
-                self._load_mock_data() # Load initial mock data after setting user_email
+                # Ensure email is lower case for use as a key
+                self.user_email = user_profile.email.lower()
+                
+                # Create the user's store if it doesn't exist
+                if self.user_email not in self.qumail_mock_inboxes:
+                    self.qumail_mock_inboxes[self.user_email] = {
+                        "Inbox": [], "Sent": [], "Drafts": [], "Trash": [], 
+                        "Spam": [], "Quantum Vault": []
+                    }
+                # Set the current user's store
+                self.local_email_store = self.qumail_mock_inboxes[self.user_email]
+                self.local_email_store_key = self.user_email # Store key for easy access
+                
+                self._load_mock_data() # Load/Ensure initial mock data is set
+            # End [FIX]
             
             # Create secure SSL context
             self.ssl_context = ssl.create_default_context()
@@ -295,28 +308,35 @@ class EmailHandler:
             raise ValueError(f"Unsupported provider: {provider}")
 
     def _load_mock_data(self):
-        """Loads initial mock emails directly into the local store."""
+        """[FIX] Loads initial mock emails and ensures demo users exist."""
         
-        if self.local_email_store["Inbox"]:
-            return # Already loaded
-            
-        # Ensure mailbox is clean for fresh start
-        self.local_email_store = {"Inbox": [], "Sent": [], "Drafts": [], "Trash": [], "Spam": [], "Quantum Vault": []}
+        demo_users = ['sravya@qumail.com', 'nazia@qumail.com']
         
-        mock_emails = [
-            # Inbox
-            {'email_id': '1', 'sender': 'Alice Smith', 'subject': 'Quantum Security Test', 'preview': 'Testing the new quantum encryption features...', 'received_at': (datetime.utcnow() - timedelta(hours=2)).isoformat(), 'security_level': 'L2', 'folder': 'Inbox', 'body': 'This is a test of the quantum encryption system. The keys are working perfectly and the communication is secure. Ψ'},
-            {'email_id': '2', 'sender': 'Bob Johnson', 'subject': 'Meeting Tomorrow', 'preview': 'Can we meet tomorrow to discuss the project?', 'received_at': (datetime.utcnow() - timedelta(hours=1)).isoformat(), 'security_level': 'L1', 'folder': 'Inbox', 'body': 'Hi there, I wanted to schedule a meeting for tomorrow to discuss the quantum communication project. Please let me know your availability.'},
-            {'email_id': '3', 'sender': 'Charlie Brown', 'subject': 'Regular Email', 'preview': 'This is just a regular email without encryption.', 'received_at': (datetime.utcnow() - timedelta(hours=0.5)).isoformat(), 'security_level': 'L4', 'folder': 'Inbox', 'body': 'This is a standard email sent without any quantum encryption. It uses regular TLS protection only.'},
-            # Quantum Vault
-            {'email_id': '4', 'sender': 'System Admin', 'subject': 'Welcome to QuMail Quantum Vault', 'preview': 'Your quantum secure emails are stored here...', 'received_at': (datetime.utcnow() - timedelta(hours=3)).isoformat(), 'security_level': 'L1', 'folder': 'Quantum Vault', 'body': 'Welcome to the Quantum Vault! All your L1 and L2 encrypted emails are automatically stored here for enhanced security.'}
-        ]
-        
-        for email in mock_emails:
-            # Normalize folder name for internal storage
-            folder_key = email['folder'].replace(" ", "_").replace("🔐", "").replace("🚫", "").replace("🗑️", "").strip()
-            if folder_key in self.local_email_store:
-                self.local_email_store[folder_key].append(email) 
+        for user_email in demo_users:
+            user_email_key = user_email.lower()
+            if user_email_key not in self.qumail_mock_inboxes:
+                # Initialize the store structure if it was not done in initialize()
+                self.qumail_mock_inboxes[user_email_key] = {
+                    "Inbox": [], "Sent": [], "Drafts": [], "Trash": [], 
+                    "Spam": [], "Quantum Vault": []
+                }
+
+            # Only load initial demo emails for one user once
+            if user_email == 'sravya@qumail.com' and not self.qumail_mock_inboxes[user_email_key]["Inbox"]:
+                store = self.qumail_mock_inboxes[user_email_key]
+                mock_emails = [
+                    # Inbox
+                    {'email_id': '1', 'sender': 'Alice Smith', 'subject': 'Quantum Security Test', 'preview': 'Testing the new quantum encryption features...', 'received_at': (datetime.utcnow() - timedelta(hours=2)).isoformat(), 'security_level': 'L2', 'folder': 'Inbox', 'body': 'This is a test of the quantum encryption system. The keys are working perfectly and the communication is secure. Ψ'},
+                    {'email_id': '2', 'sender': 'Bob Johnson', 'subject': 'Meeting Tomorrow', 'preview': 'Can we meet tomorrow to discuss the project?', 'received_at': (datetime.utcnow() - timedelta(hours=1)).isoformat(), 'security_level': 'L1', 'folder': 'Inbox', 'body': 'Hi there, I wanted to schedule a meeting for tomorrow to discuss the quantum communication project. Please let me know your availability.'},
+                    {'email_id': '3', 'sender': 'Charlie Brown', 'subject': 'Regular Email', 'preview': 'This is just a regular email without encryption.', 'received_at': (datetime.utcnow() - timedelta(hours=0.5)).isoformat(), 'security_level': 'L4', 'folder': 'Inbox', 'body': 'This is a standard email sent without any quantum encryption. It uses regular TLS protection only.'},
+                    # Quantum Vault
+                    {'email_id': '4', 'sender': 'System Admin', 'subject': 'Welcome to QuMail Quantum Vault', 'preview': 'Your quantum secure emails are stored here...', 'received_at': (datetime.utcnow() - timedelta(hours=3)).isoformat(), 'security_level': 'L1', 'folder': 'Quantum Vault', 'body': 'Welcome to the Quantum Vault! All your L1 and L2 encrypted emails are automatically stored here for enhanced security.'}
+                ]
+                
+                for email in mock_emails:
+                    folder_key = email['folder'].replace(" ", "_").replace("🔐", "").replace("🚫", "").replace("🗑️", "").strip()
+                    if folder_key in store:
+                        store[folder_key].append(email) 
 
     async def send_encrypted_email(self, to_address: str, encrypted_data: Dict[str, Any]) -> bool:
         """PRODUCTION: Send encrypted email with OAuth2 token validation and async SMTP"""
@@ -331,6 +351,7 @@ class EmailHandler:
                 # TRANSPORT HARDENING: Ensure fresh token before network operation
                 logging.info("TRANSPORT HARDENING: Validating OAuth2 token before SMTP connection")
                 try:
+                    # Note: This call requires proper OAuth flow completion in your GUI
                     fresh_token = await self.oauth_manager.ensure_valid_token(provider, user_id)
                     if fresh_token:
                         self.oauth_tokens['access_token'] = fresh_token
@@ -342,15 +363,15 @@ class EmailHandler:
                     logging.error(f"CRITICAL: Token validation failed: {token_error}")
                     # Continue with cached token as fallback
             
-            # SMART MOCKING FIX: Check if this is a self-email (loopback)
-            is_self_email = False
-            if self.user_email and (
-                to_address.lower() == self.user_email.lower() or
-                to_address.lower().startswith(self.user_email.split('@')[0].lower())
-            ):
-                is_self_email = True
-                logging.info("Detected self-email - enabling smart loopback")
+            # [FIX] New QuMail to QuMail delivery simulation logic
+            to_address_key = to_address.lower()
+            is_qumail_recipient = to_address_key.endswith('@qumail.com')
             
+            is_local_qumail_delivery = is_qumail_recipient
+            
+            if is_local_qumail_delivery:
+                logging.info(f"Detected local QuMail recipient ({to_address}) - enabling local delivery simulation")
+
             # Create email structure
             email_data = {
                 'email_id': f"msg_{int(datetime.utcnow().timestamp() * 1000)}",
@@ -361,20 +382,31 @@ class EmailHandler:
                 'message_type': 'encrypted'
             }
             
-            # SMART MOCKING: If self-email, also create a copy for Inbox
-            if is_self_email:
-                # Store in Sent folder
+            if is_local_qumail_delivery:
+                # 1. Store in SENDER's Sent folder (using self.local_email_store, which is the sender's store)
                 sent_email = email_data.copy()
                 sent_email['folder'] = 'Sent'
                 self.local_email_store['Sent'].append(sent_email)
                 
-                # LOOPBACK: Create copy for Inbox with decrypted preview
+                # 2. Add to RECIPIENT's Inbox (using qumail_mock_inboxes for the recipient)
+                if to_address_key not in self.qumail_mock_inboxes:
+                    # Create a new mock store for a new QuMail user on the fly
+                    self.qumail_mock_inboxes[to_address_key] = {
+                        "Inbox": [], "Sent": [], "Drafts": [], "Trash": [], 
+                        "Spam": [], "Quantum Vault": []
+                    }
+                
+                recipient_store = self.qumail_mock_inboxes[to_address_key]
+                
+                # Create copy for Recipient's Inbox
                 inbox_email = email_data.copy()
                 inbox_email['email_id'] = f"inbox_{int(datetime.utcnow().timestamp() * 1000)}"
-                inbox_email['sender'] = to_address  # Show as coming from recipient
-                inbox_email['receiver'] = self.user_email or "you@qumail.com"
+                inbox_email['sender'] = self.user_email
+                inbox_email['receiver'] = to_address
                 inbox_email['received_at'] = datetime.utcnow().isoformat()
                 inbox_email['folder'] = 'Inbox'
+                
+                recipient_store['Inbox'].append(inbox_email)
                 
                 # If this is quantum secured, put it in Quantum Vault too
                 security_level = encrypted_data.get('security_level', 'L4')
@@ -382,16 +414,17 @@ class EmailHandler:
                     vault_email = inbox_email.copy()
                     vault_email['email_id'] = f"vault_{int(datetime.utcnow().timestamp() * 1000)}"
                     vault_email['folder'] = 'Quantum Vault'
-                    self.local_email_store['Quantum Vault'].append(vault_email)
-                
-                self.local_email_store['Inbox'].append(inbox_email)
-                logging.info("Email loopback: Created copies in Sent, Inbox, and Quantum Vault")
-                
-            else:
-                # Normal email - just store in Sent
-                email_data['folder'] = 'Sent'
-                self.local_email_store['Sent'].append(email_data)
-                logging.info("Normal email: Stored in Sent folder")
+                    recipient_store['Quantum Vault'].append(vault_email)
+
+                logging.info(f"QuMail Delivery Simulation: Mail delivered to {to_address}'s Inbox/Vault")
+                return True # Delivery is successful, bypass SMTP
+            
+            # [FIX END]
+            
+            # Normal email (External/OAuth) - just store in Sent
+            email_data['folder'] = 'Sent'
+            self.local_email_store['Sent'].append(email_data)
+            logging.info("External email: Stored in Sent folder, attempting SMTP...")
             
             # PRODUCTION: Attempt real SMTP with retry logic and connection recovery
             smtp_success = await self._attempt_production_smtp_with_retry(to_address, encrypted_data)
@@ -528,7 +561,7 @@ class EmailHandler:
         """Fetch email by ID (CRITICAL FIX: Retrieves from local cache)"""
         try:
             # Search local store for the email
-            # Search all folders
+            # Search all folders in the CURRENT user's local store
             emails_to_search = [e for sublist in self.local_email_store.values() for e in sublist]
             
             for email_data in emails_to_search:
@@ -594,6 +627,7 @@ class EmailHandler:
             # Handle folders like Quantum Vault which might need special logic
             if folder_key == "QuantumVault":
                 # Filter all secure emails
+                # This should only search the CURRENT user's store
                 all_secure_emails = [
                     e for sublist in self.local_email_store.values() for e in sublist
                     if e.get('security_level') in ['L1', 'L2', 'L3']
