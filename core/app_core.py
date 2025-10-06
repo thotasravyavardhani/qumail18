@@ -15,13 +15,39 @@ from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, asdict
 from datetime import datetime
 import os
-import aiofiles.os 
-from ..crypto.kme_client import KMEClient
-from ..crypto.cipher_strategies import CipherManager
-from ..transport.email_handler import EmailHandler
-from ..transport.chat_handler import ChatHandler
-from ..auth.identity_manager import IdentityManager
-from ..db.secure_storage import SecureStorage
+try:
+    import aiofiles.os
+except ImportError:
+    import os as aiofiles_os
+    # Fallback for when aiofiles is not available
+    class MockAiofilesOS:
+        @staticmethod
+        async def path_exists(path):
+            return os.path.exists(path)
+        
+        @staticmethod
+        async def path_getsize(path):
+            return os.path.getsize(path)
+    
+    aiofiles.os = MockAiofilesOS() 
+try:
+    from ..crypto.kme_client import KMEClient
+    from ..crypto.cipher_strategies import CipherManager
+    from ..transport.email_handler import EmailHandler
+    from ..transport.chat_handler import ChatHandler
+    from ..auth.identity_manager import IdentityManager
+    from ..db.secure_storage import SecureStorage
+except ImportError:
+    # Fallback for direct execution
+    import sys
+    from pathlib import Path
+    sys.path.append(str(Path(__file__).parent.parent))
+    from crypto.kme_client import KMEClient
+    from crypto.cipher_strategies import CipherManager
+    from transport.email_handler import EmailHandler
+    from transport.chat_handler import ChatHandler
+    from auth.identity_manager import IdentityManager
+    from db.secure_storage import SecureStorage
 
 @dataclass
 class UserProfile:
@@ -389,8 +415,11 @@ class QuMailCore:
                     message_bytes, key_data['key_data'], level, encryption_file_context
                 )
                 
-                # Add key metadata
+                # Add key metadata and message content for email handler
                 encrypted_data['key_id'] = key_data['key_id']
+                encrypted_data['subject'] = subject
+                encrypted_data['body'] = body
+                encrypted_data['security_level'] = level
                 
                 # PQC FEATURE: Add enhanced file encryption metadata
                 if level == 'L3' and has_large_files:
@@ -411,6 +440,10 @@ class QuMailCore:
                 encrypted_data = self.cipher_manager.encrypt_with_level(
                     message_bytes, b'', level, encryption_file_context
                 )
+                # Add message content for email handler
+                encrypted_data['subject'] = subject
+                encrypted_data['body'] = body
+                encrypted_data['security_level'] = level
                 
             # Send via email handler
             result = await self.email_handler.send_encrypted_email(
