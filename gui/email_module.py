@@ -954,36 +954,15 @@ class EmailModule(QWidget):
             try:
                 import asyncio
                 loop = asyncio.get_event_loop()
-                
-                # Create a task and wait for it to complete
-                async def send_email_task():
-                    return await self.core.send_secure_email(
-                        email_data['to'], 
-                        email_data['subject'], 
-                        email_data['body'],
-                        email_data.get('attachments'),
-                        email_data['security_level'],
-                        {'has_attachments': bool(email_data.get('attachments')),
-                         'total_size': email_data.get('total_attachment_size', 0)}
-                    )
-                
-                # Run the async task
-                task = loop.create_task(send_email_task())
-                # Don't wait here as it would block the UI, but log the result
-                def log_result(future):
-                    try:
-                        result = future.result()
-                        if result:
-                            logging.info("Email sent successfully via core")
-                            # Refresh the email list to show the sent email
-                            self.refresh_emails()
-                        else:
-                            logging.error("Email sending failed via core")
-                    except Exception as e:
-                        logging.error(f"Email sending error: {e}")
-                
-                task.add_done_callback(log_result)
-                
+                loop.create_task(self.core.send_secure_email(
+                    email_data['to'], 
+                    email_data['subject'], 
+                    email_data['body'],
+                    email_data.get('attachments'),
+                    email_data['security_level'],
+                    {'has_attachments': bool(email_data.get('attachments')),
+                     'total_size': email_data.get('total_attachment_size', 0)}
+                ))
             except Exception as e:
                 logging.error(f"Failed to send via core: {e}")
         
@@ -992,56 +971,9 @@ class EmailModule(QWidget):
         logging.info("Refreshing email list")
         self.status_message.emit("Refreshing emails...")
         
-        # Load emails from core if available
-        if self.core and hasattr(self.core, 'get_email_list'):
-            try:
-                import asyncio
-                loop = asyncio.get_event_loop()
-                
-                async def load_emails_task():
-                    # Get emails from all folders
-                    all_emails = []
-                    folders = ["Inbox", "Sent", "Drafts", "Quantum Vault", "Spam", "Trash"]
-                    
-                    for folder in folders:
-                        try:
-                            folder_emails = await self.core.get_email_list(folder, 50)
-                            for email in folder_emails:
-                                email['folder'] = folder
-                            all_emails.extend(folder_emails)
-                        except Exception as e:
-                            logging.warning(f"Failed to load emails from {folder}: {e}")
-                    
-                    return all_emails
-                
-                def update_emails(future):
-                    try:
-                        emails = future.result()
-                        if emails:
-                            # Clear existing emails and add new ones
-                            self.all_emails.clear()
-                            self.all_emails.extend(emails)
-                            # Update the display
-                            self.update_email_list(self.all_emails)
-                            logging.info(f"Refreshed {len(emails)} emails from core")
-                        else:
-                            # Fallback to sample data
-                            self.load_initial_emails()
-                    except Exception as e:
-                        logging.error(f"Failed to refresh emails: {e}")
-                        # Fallback to sample data
-                        self.load_initial_emails()
-                
-                task = loop.create_task(load_emails_task())
-                task.add_done_callback(update_emails)
-                
-            except Exception as e:
-                logging.error(f"Failed to refresh emails: {e}")
-                # Fallback to sample data
-                self.load_initial_emails()
-        else:
-            # Fallback to sample data
-            self.load_initial_emails()
+        # In real implementation, this would fetch from the server
+        # For now, just reload the sample data
+        self.load_initial_emails()
         
     def handle_search(self, search_text: str):
         """Handle search functionality (FIXED: Works with folder system)"""
