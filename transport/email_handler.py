@@ -24,14 +24,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication    
 from email.utils import formataddr, formatdate
 import aiofiles
-try:
-    from ..utils.config import load_config
-except ImportError:
-    # Fallback for direct execution
-    import sys
-    from pathlib import Path
-    sys.path.append(str(Path(__file__).parent.parent))
-    from utils.config import load_config
+from ..utils.config import load_config
 
 # Production async email libraries
 try:
@@ -142,14 +135,8 @@ class EmailHandler:
         try:
             # [FIX] Initialize user store and link to current user
             if user_profile:
-                # Handle both dict and object user profiles
-                if hasattr(user_profile, 'email'):
-                    self.user_email = user_profile.email.lower()
-                elif isinstance(user_profile, dict) and 'email' in user_profile:
-                    self.user_email = user_profile['email'].lower()
-                else:
-                    logging.error("Invalid user profile format")
-                    return
+                # Ensure email is lower case for use as a key
+                self.user_email = user_profile.email.lower()
                 
                 # Create the user's store if it doesn't exist
                 if self.user_email not in self.qumail_mock_inboxes:
@@ -339,11 +326,11 @@ class EmailHandler:
                 store = self.qumail_mock_inboxes[user_email_key]
                 mock_emails = [
                     # Inbox
-                    {'email_id': '1', 'sender': 'Alice Smith', 'receiver': 'sravya@qumail.com', 'subject': 'Quantum Security Test', 'preview': 'Testing the new quantum encryption features...', 'received_at': (datetime.utcnow() - timedelta(hours=2)).isoformat(), 'security_level': 'L2', 'folder': 'Inbox', 'body': 'This is a test of the quantum encryption system. The keys are working perfectly and the communication is secure. Ψ'},
-                    {'email_id': '2', 'sender': 'Bob Johnson', 'receiver': 'sravya@qumail.com', 'subject': 'Meeting Tomorrow', 'preview': 'Can we meet tomorrow to discuss the project?', 'received_at': (datetime.utcnow() - timedelta(hours=1)).isoformat(), 'security_level': 'L1', 'folder': 'Inbox', 'body': 'Hi there, I wanted to schedule a meeting for tomorrow to discuss the quantum communication project. Please let me know your availability.'},
-                    {'email_id': '3', 'sender': 'Charlie Brown', 'receiver': 'sravya@qumail.com', 'subject': 'Regular Email', 'preview': 'This is just a regular email without encryption.', 'received_at': (datetime.utcnow() - timedelta(hours=0.5)).isoformat(), 'security_level': 'L4', 'folder': 'Inbox', 'body': 'This is a standard email sent without any quantum encryption. It uses regular TLS protection only.'},
+                    {'email_id': '1', 'sender': 'Alice Smith', 'subject': 'Quantum Security Test', 'preview': 'Testing the new quantum encryption features...', 'received_at': (datetime.utcnow() - timedelta(hours=2)).isoformat(), 'security_level': 'L2', 'folder': 'Inbox', 'body': 'This is a test of the quantum encryption system. The keys are working perfectly and the communication is secure. Ψ'},
+                    {'email_id': '2', 'sender': 'Bob Johnson', 'subject': 'Meeting Tomorrow', 'preview': 'Can we meet tomorrow to discuss the project?', 'received_at': (datetime.utcnow() - timedelta(hours=1)).isoformat(), 'security_level': 'L1', 'folder': 'Inbox', 'body': 'Hi there, I wanted to schedule a meeting for tomorrow to discuss the quantum communication project. Please let me know your availability.'},
+                    {'email_id': '3', 'sender': 'Charlie Brown', 'subject': 'Regular Email', 'preview': 'This is just a regular email without encryption.', 'received_at': (datetime.utcnow() - timedelta(hours=0.5)).isoformat(), 'security_level': 'L4', 'folder': 'Inbox', 'body': 'This is a standard email sent without any quantum encryption. It uses regular TLS protection only.'},
                     # Quantum Vault
-                    {'email_id': '4', 'sender': 'System Admin', 'receiver': 'sravya@qumail.com', 'subject': 'Welcome to QuMail Quantum Vault', 'preview': 'Your quantum secure emails are stored here...', 'received_at': (datetime.utcnow() - timedelta(hours=3)).isoformat(), 'security_level': 'L1', 'folder': 'Quantum Vault', 'body': 'Welcome to the Quantum Vault! All your L1 and L2 encrypted emails are automatically stored here for enhanced security.'}
+                    {'email_id': '4', 'sender': 'System Admin', 'subject': 'Welcome to QuMail Quantum Vault', 'preview': 'Your quantum secure emails are stored here...', 'received_at': (datetime.utcnow() - timedelta(hours=3)).isoformat(), 'security_level': 'L1', 'folder': 'Quantum Vault', 'body': 'Welcome to the Quantum Vault! All your L1 and L2 encrypted emails are automatically stored here for enhanced security.'}
                 ]
                 
                 for email in mock_emails:
@@ -357,7 +344,7 @@ class EmailHandler:
             logging.info(f"Email: Sending encrypted email to {to_address}")
             
             # ISRO-GRADE: CRITICAL PRE-CONNECTION TOKEN VALIDATION (Enhanced)
-            if hasattr(self, 'oauth_manager') and self.oauth_manager and self.oauth_tokens:
+            if self.oauth_manager and self.oauth_tokens:
                 provider = self.oauth_tokens.get('provider')
                 user_id = getattr(self, 'user_id', 'default_user')
                 
@@ -385,23 +372,13 @@ class EmailHandler:
             if is_local_qumail_delivery:
                 logging.info(f"Detected local QuMail recipient ({to_address}) - enabling local delivery simulation")
 
-            # Extract message content from encrypted data for proper display
-            security_level = encrypted_data.get('security_level', 'L4')
-            subject = encrypted_data.get('subject', 'No Subject')
-            body = encrypted_data.get('body', 'No content')
-            
-            # Create proper email structure for GUI display
+            # Create email structure
             email_data = {
                 'email_id': f"msg_{int(datetime.utcnow().timestamp() * 1000)}",
                 'sender': self.user_email or "you@qumail.com",
                 'receiver': to_address,
-                'subject': subject,
-                'body': body,
-                'preview': body[:100] + "..." if len(body) > 100 else body,
-                'received_at': datetime.utcnow().isoformat(),
-                'sent_at': datetime.utcnow().isoformat(),
-                'security_level': security_level,
                 'encrypted_payload': encrypted_data,
+                'sent_at': datetime.utcnow().isoformat(),
                 'message_type': 'encrypted'
             }
             
@@ -409,8 +386,6 @@ class EmailHandler:
                 # 1. Store in SENDER's Sent folder (using self.local_email_store, which is the sender's store)
                 sent_email = email_data.copy()
                 sent_email['folder'] = 'Sent'
-                sent_email['sender'] = self.user_email or "you@qumail.com"
-                sent_email['receiver'] = to_address
                 self.local_email_store['Sent'].append(sent_email)
                 
                 # 2. Add to RECIPIENT's Inbox (using qumail_mock_inboxes for the recipient)
@@ -423,10 +398,10 @@ class EmailHandler:
                 
                 recipient_store = self.qumail_mock_inboxes[to_address_key]
                 
-                # Create copy for Recipient's Inbox with proper display format
+                # Create copy for Recipient's Inbox
                 inbox_email = email_data.copy()
                 inbox_email['email_id'] = f"inbox_{int(datetime.utcnow().timestamp() * 1000)}"
-                inbox_email['sender'] = self.user_email or "you@qumail.com"
+                inbox_email['sender'] = self.user_email
                 inbox_email['receiver'] = to_address
                 inbox_email['received_at'] = datetime.utcnow().isoformat()
                 inbox_email['folder'] = 'Inbox'
@@ -434,7 +409,8 @@ class EmailHandler:
                 recipient_store['Inbox'].append(inbox_email)
                 
                 # If this is quantum secured, put it in Quantum Vault too
-                if security_level in ['L1', 'L2', 'L3']:
+                security_level = encrypted_data.get('security_level', 'L4')
+                if security_level in ['L1', 'L2']:
                     vault_email = inbox_email.copy()
                     vault_email['email_id'] = f"vault_{int(datetime.utcnow().timestamp() * 1000)}"
                     vault_email['folder'] = 'Quantum Vault'
@@ -620,7 +596,7 @@ class EmailHandler:
         """PRODUCTION: Get list of emails with OAuth2 token validation and async IMAP"""
         
         # ISRO-GRADE: CRITICAL PRE-CONNECTION TOKEN VALIDATION (Enhanced)
-        if hasattr(self, 'oauth_manager') and self.oauth_manager and self.oauth_tokens:
+        if self.oauth_manager and self.oauth_tokens:
             provider = self.oauth_tokens.get('provider')
             user_id = getattr(self, 'user_id', 'default_user')
             
@@ -923,7 +899,7 @@ class EmailHandler:
             }
             
             # Test OAuth token validity
-            if hasattr(self, 'oauth_manager') and self.oauth_manager and self.oauth_tokens:
+            if self.oauth_manager and self.oauth_tokens:
                 provider = self.oauth_tokens.get('provider')
                 user_id = getattr(self, 'user_id', 'health_check_user')
                 
