@@ -431,7 +431,8 @@ class QuMailCore:
             return False
            
         except Exception as e:
-            logging.error(f"Failed to send secure email: {e}")
+            # CRITICAL FIX: Add full traceback logging to find the source of the silent failure
+            logging.critical(f"CRITICAL FAILURE: QuMail Core failed to send secure email. Error: {e}", exc_info=True)
             return False
             
     async def receive_secure_email(self, email_id: str) -> Optional[Dict]:
